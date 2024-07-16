@@ -81,7 +81,6 @@ const sendMessage = asyncHandler(async (req, res) => {
 
     await Chat.findByIdAndUpdate(req.body.chatId, { latestMessage: message });
 
-    // Decrypt the content before sending the response
     message.content = decrypt(message.content);
 
     res.json(message);
