@@ -1,26 +1,44 @@
 import { AddIcon } from "@chakra-ui/icons";
-import { Box, Stack, Text, Button } from "@chakra-ui/react";
+import { Box, Stack, Text } from "@chakra-ui/layout";
 import { useToast } from "@chakra-ui/toast";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { getSender } from "../config/ChatLogics";
 import ChatLoading from "./ChatLoading";
 import GroupChatModal from "./miscellaneous/GroupChatModal";
+import { Button } from "@chakra-ui/react";
 import { ChatState } from "../Context/ChatProvider";
+import crypto from "crypto";
+
+// AES Decryption Function
+const algorithm = "aes-256-cbc";
+const secretKey = crypto
+  .createHash("sha256")
+  .update("shashank")
+  .digest("base64")
+  .substr(0, 32);
+
+const decrypt = (text) => {
+  const textParts = text.split(":");
+  const iv = Buffer.from(textParts.shift(), "hex");
+  const encryptedText = Buffer.from(textParts.join(":"), "hex");
+  const decipher = crypto.createDecipheriv(
+    algorithm,
+    Buffer.from(secretKey),
+    iv
+  );
+  let decrypted = decipher.update(encryptedText, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+};
 
 const MyChats = ({ fetchAgain }) => {
   const [loggedUser, setLoggedUser] = useState();
-
   const { selectedChat, setSelectedChat, user, chats, setChats } = ChatState();
-
   const toast = useToast();
 
   const fetchChats = async () => {
     try {
-      if (!user || !user.token) {
-        throw new Error("User not authenticated");
-      }
-
       const config = {
         headers: {
           Authorization: `Bearer ${user.token}`,
@@ -28,12 +46,20 @@ const MyChats = ({ fetchAgain }) => {
       };
 
       const { data } = await axios.get("/api/chat", config);
-      setChats(data);
+
+      // Decrypt the latest message content
+      const decryptedChats = data.map((chat) => {
+        if (chat.latestMessage) {
+          chat.latestMessage.content = decrypt(chat.latestMessage.content);
+        }
+        return chat;
+      });
+
+      setChats(decryptedChats);
     } catch (error) {
-      console.error("Error fetching chats:", error);
       toast({
-        title: "Error Occurred!",
-        description: error.message || "Failed to Load the chats",
+        title: "Error Occured!",
+        description: "Failed to Load the chats",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -43,19 +69,15 @@ const MyChats = ({ fetchAgain }) => {
   };
 
   useEffect(() => {
-    const userInfo = localStorage.getItem("userInfo");
-    if (userInfo) {
-      setLoggedUser(JSON.parse(userInfo));
-    } else {
-      console.error("User info not found in localStorage");
-    }
+    setLoggedUser(JSON.parse(localStorage.getItem("userInfo")));
     fetchChats();
+    // eslint-disable-next-line
   }, [fetchAgain]);
 
   return (
     <Box
-      display={{ base: selectedChat ? "none" : "flex", md: "flex" }}
-      flexDirection="column"
+      d={{ base: selectedChat ? "none" : "flex", md: "flex" }}
+      flexDir="column"
       alignItems="center"
       p={3}
       bg="white"
@@ -68,7 +90,7 @@ const MyChats = ({ fetchAgain }) => {
         px={3}
         fontSize={{ base: "28px", md: "30px" }}
         fontFamily="Work sans"
-        display="flex"
+        d="flex"
         w="100%"
         justifyContent="space-between"
         alignItems="center"
@@ -76,7 +98,7 @@ const MyChats = ({ fetchAgain }) => {
         My Chats
         <GroupChatModal>
           <Button
-            display="flex"
+            d="flex"
             fontSize={{ base: "17px", md: "10px", lg: "17px" }}
             rightIcon={<AddIcon />}
           >
@@ -85,8 +107,8 @@ const MyChats = ({ fetchAgain }) => {
         </GroupChatModal>
       </Box>
       <Box
-        display="flex"
-        flexDirection="column"
+        d="flex"
+        flexDir="column"
         p={3}
         bg="#F8F8F8"
         w="100%"
@@ -114,7 +136,12 @@ const MyChats = ({ fetchAgain }) => {
                 </Text>
                 {chat.latestMessage && (
                   <Text fontSize="xs">
-                    <b>{chat.latestMessage.sender.name} : </b>
+                    <b>
+                      {chat.latestMessage.sender._id === loggedUser._id
+                        ? "You"
+                        : chat.latestMessage.sender.name}{" "}
+                      :{" "}
+                    </b>
                     {chat.latestMessage.content.length > 50
                       ? chat.latestMessage.content.substring(0, 51) + "..."
                       : chat.latestMessage.content}
@@ -130,5 +157,4 @@ const MyChats = ({ fetchAgain }) => {
     </Box>
   );
 };
-
 export default MyChats;
